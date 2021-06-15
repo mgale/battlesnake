@@ -111,14 +111,25 @@ func (s *Solo) GetMove(gameRequest GameRequest) string {
 
 		tmpTile := w.Tile(tmpDest.X, tmpDest.Y)
 		if tmpTile.Kind == KindBlocker {
+			foodTiles := []*Tile{}
+			plainTiles := []*Tile{}
 			log.Println("Error - Can't find path, dest failed:", tmpTile)
 			directPaths := w.From().PathNeighbors()
 			for _, path := range directPaths {
 				checkTile := path.(*Tile)
-				if checkTile.Kind == KindPlain || checkTile.Kind == KindFood {
-					tmpDest.X = checkTile.X
-					tmpDest.Y = checkTile.Y
+				if checkTile.Kind == KindFood {
+					foodTiles = append(foodTiles, checkTile)
 				}
+				if checkTile.Kind == KindPlain {
+					plainTiles = append(plainTiles, checkTile)
+				}
+			}
+			if len(foodTiles) > 0 {
+				tmpDest.X = foodTiles[0].X
+				tmpDest.Y = foodTiles[0].Y
+			} else {
+				tmpDest.X = plainTiles[0].X
+				tmpDest.Y = plainTiles[0].Y
 			}
 		}
 
