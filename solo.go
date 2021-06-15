@@ -2,23 +2,69 @@ package main
 
 import (
 	"log"
-	"math/rand"
 
 	"github.com/beefsack/go-astar"
 	"github.com/google/go-cmp/cmp"
 )
 
+/*
+
+
+ */
+
 type Solo struct {
-	path             []astar.Pather
-	distance         float64
-	found            bool
-	firstDestination Coord
-	lastDestination  Coord
-	rowLimiter       int
-	smallBodySize    int
-	ladderStage      int
-	xMax             int
-	yMax             int
+	path              []astar.Pather
+	distance          float64
+	found             bool
+	firstDestination  Coord
+	lastDestination   Coord
+	rowLimiter        int
+	smallBodySize     int
+	ladderStage       int
+	xMax              int
+	yMax              int
+	safeTrack         []Coord
+	safeTrackPosition int
+}
+
+func generateSquare(xMax, yMax int) []Coord {
+	return []Coord{
+		{X: 0, Y: 0},
+		{X: xMax, Y: 0},
+		{X: xMax, Y: yMax},
+		{X: 0, Y: yMax},
+	}
+}
+
+func generateLadder(xMax, yMax int) []Coord {
+	ladderCoords := []Coord{}
+
+	xBuffer := xMax - 1
+	xflip := 0
+	for y := yMax; y > 0; y-- {
+		ladderCoords = append(ladderCoords, Coord{
+			X: xflip,
+			Y: y,
+		})
+		xflip = xBuffer - xflip
+	}
+
+	ladderCoords = append(ladderCoords, []Coord{
+		{
+			X: xMax,
+			Y: 1,
+		},
+		{
+			X: xMax,
+			Y: yMax / 2,
+		},
+		{
+			X: xMax,
+			Y: yMax,
+		}}...,
+	)
+
+	return ladderCoords
 }
 
 func (s *Solo) Initialize(gameRequest GameRequest) {
@@ -31,111 +77,61 @@ func (s *Solo) Initialize(gameRequest GameRequest) {
 	s.firstDestination.Y = gameRequest.Board.Height - 1
 	s.lastDestination.X = gameRequest.You.Head.X
 	s.lastDestination.Y = gameRequest.You.Head.Y
-	s.rowLimiter = gameRequest.Board.Width - 2
-	s.smallBodySize = gameRequest.Board.Width - 2
-	s.ladderStage = 0
+
 	s.xMax = gameRequest.Board.Width - 1
 	s.yMax = gameRequest.Board.Height - 1
-}
 
-// We need a new destination and food does not exist or we are too large
-func (s *Solo) calculateDest(gameRequest GameRequest) Coord {
-
-	//Snake placement completely unknown.
-	if s.ladderStage == 0 {
-		s.ladderStage = 1
-		return Coord{
-			X: s.xMax,
-			Y: rand.Intn(s.yMax),
-		}
-	}
-
-	if s.ladderStage == 1 {
-		if gameRequest.You.Head.X == s.xMax {
-			// We made it to the mountains
-			s.ladderStage = 2
-			return s.firstDestination
-		} else {
-			return Coord{
-				X: s.xMax,
-				Y: rand.Intn(s.yMax),
-			}
-		}
-	}
-
-	if s.ladderStage == 2 {
-		//If we are near the bottom of the board go to our firstDestination
-		if gameRequest.You.Head.Y <= 1 {
-			s.ladderStage = 1
-			return s.firstDestination
-		}
-		return Coord{
-			X: s.xMax - gameRequest.You.Head.X,
-			Y: gameRequest.You.Head.Y - 1,
-		}
-	}
-
-	log.Println("Error - Unknown condition, generating random move")
-	return Coord{
-		X: rand.Intn(s.xMax),
-		Y: rand.Intn(s.yMax),
-	}
+	s.safeTrackPosition = 0
+	s.safeTrack = generateLadder(s.xMax, s.yMax)
 }
 
 func (s *Solo) GetMove(gameRequest GameRequest) string {
-	yMax := gameRequest.Board.Height
-	xMax := gameRequest.Board.Width
-
 	w := createWorld(gameRequest)
-	for x := s.rowLimiter; x < xMax; x++ {
-		for y := 0; y < yMax; y++ {
-			w.SetTile(&Tile{
-				Kind: KindMountain,
-			}, x, y)
-		}
-	}
 
+	loopCounter := 0
+	loopMax := 10
 	for {
+		loopCounter++
+		if loopCounter > loopMax {
+			break
+		}
 		var tmpDest Coord
-
-		if cmp.Equal(gameRequest.You.Head, s.lastDestination) {
-			//We have reached our target, goal, we need a new destination
-			//Wiping current dest
-			s.lastDestination = Coord{}
+		if s.safeTrackPosition >= len(s.safeTrack) {
+			s.safeTrackPosition = 0
 		}
 
-		if (Coord{}) == s.lastDestination {
-			// We need a new destination
-			// Are we small and is there food
-			tmpTile := w.FirstOfKind(KindRiver)
-			if len(gameRequest.You.Body) < s.rowLimiter && tmpTile != nil {
-				log.Println("Food Hunting")
-				tmpDest.X = tmpTile.X
-				tmpDest.Y = tmpTile.Y
-			} else {
-				log.Println("General Move")
-				tmpDest = s.calculateDest(gameRequest)
+		if cmp.Equal(gameRequest.You.Head, s.safeTrack[s.safeTrackPosition]) {
+			s.safeTrackPosition++
+			if s.safeTrackPosition >= len(s.safeTrack) {
+				s.safeTrackPosition = 0
 			}
 		}
 
-		// Before code is path error handling
-		// tmpDestTile := w.Tile(tmpDest.X, tmpDest.Y)
-		// if tmpDestTile.Kind != KindPlain {
-		// 	//If the destination is not safe loop again
-		// 	continue
-		// }
+		tmpDest = s.safeTrack[s.safeTrackPosition]
+
+		tmpTile := w.Tile(tmpDest.X, tmpDest.Y)
+		if tmpTile.Kind == KindBlocker {
+			log.Println("Error - Can't find path, dest failed:", tmpTile)
+			directPaths := w.From().PathNeighbors()
+			for _, path := range directPaths {
+				checkTile := path.(*Tile)
+				if checkTile.Kind == KindPlain || checkTile.Kind == KindFood {
+					tmpDest.X = checkTile.X
+					tmpDest.Y = checkTile.Y
+				}
+			}
+		}
 
 		w.SetTile(&Tile{Kind: KindTo}, tmpDest.X, tmpDest.Y)
 		s.path, s.distance, s.found = astar.Path(w.From(), w.To())
 
 		if s.found {
-			s.lastDestination = tmpDest
 			break
 		}
 
 		//No found path, marking current dest tile as a blocker
 		w.SetTile(&Tile{Kind: KindBlocker}, tmpDest.X, tmpDest.Y)
-		s.lastDestination = Coord{}
+		s.safeTrackPosition++
 	}
 
 	/* Path is reverse order,
@@ -153,12 +149,13 @@ func (s *Solo) GetMove(gameRequest GameRequest) string {
 	log.Println("###########################")
 	log.Printf("Current target: %v, Type: %v", s.lastDestination, string(KindRunes[pT.Kind]))
 	log.Println("Estimated distance to dest:", s.distance)
-	log.Printf("Head Coords: X:%d, Y:%d, New Coords: X:%d, Y:%d Move: %s\n",
+	log.Printf("Head Coords: X:%d, Y:%d, New Coords: X:%d, Y:%d Move: %s MoveNum: %d\n",
 		gameRequest.You.Head.X,
 		gameRequest.You.Head.Y,
 		pT.X,
 		pT.Y,
 		move,
+		gameRequest.Turn,
 	)
 	return move
 
