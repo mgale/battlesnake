@@ -30,6 +30,8 @@ const (
 	KindTo
 	// KindPath (●) is a tile to represent where the path is in the output.
 	KindPath
+	// KindFood (E) is a food tile with a movement cost of 1.
+	KindFood
 )
 
 // KindRunes map tile kinds to output runes.
@@ -41,6 +43,7 @@ var KindRunes = map[int]rune{
 	KindFrom:     'F',
 	KindTo:       'T',
 	KindPath:     '●',
+	KindFood:     'E',
 }
 
 // RuneKinds map input runes to tile kinds.
@@ -51,6 +54,7 @@ var RuneKinds = map[rune]int{
 	'X': KindBlocker,
 	'F': KindFrom,
 	'T': KindTo,
+	'E': KindFood,
 }
 
 // KindCosts map tile kinds to movement costs.
@@ -60,6 +64,7 @@ var KindCosts = map[int]float64{
 	KindTo:       1.0,
 	KindRiver:    2.0,
 	KindMountain: 3.0,
+	KindFood:     1.0,
 }
 
 // A Tile is a tile in a grid which implements Pather.

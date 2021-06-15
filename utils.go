@@ -16,19 +16,12 @@ import (
 // Direction is based on top view of board not based on
 // snake direction.
 type GameState struct {
-	lastMove      string
 	currentTarget Coord
-	targetLoop    []Coord
 	gameRequest   GameRequest
+	strategy      Strategy
 }
 
 var gameStates map[string]GameState
-var legalMoves = map[string]bool{
-	"up":    true,
-	"down":  true,
-	"left":  true,
-	"right": true,
-}
 
 func determineDirection(from Coord, to Coord) string {
 	if from.X == to.X {
@@ -62,6 +55,12 @@ func createWorld(gameRequest GameRequest) World {
 		}
 	}
 
+	for _, coord := range gameRequest.Board.Food {
+		w.SetTile(&Tile{
+			Kind: KindFood,
+		}, coord.X, coord.Y)
+	}
+
 	for _, coord := range gameRequest.Board.Hazards {
 		w.SetTile(&Tile{
 			Kind: KindBlocker,
@@ -89,7 +88,7 @@ func createWorld(gameRequest GameRequest) World {
 	return w
 }
 
-func determineMove(gameState GameState) (MoveResponse, GameState) {
+func determineMove(gameState GameState) (string, GameState) {
 	// Choose a random direction to move in
 	//possibleMoves := []string{"up", "down", "left", "right"}
 	//move := possibleMoves[rand.Intn(len(possibleMoves))]
@@ -169,9 +168,6 @@ func determineMove(gameState GameState) (MoveResponse, GameState) {
 	}
 
 	move := determineDirection(gameState.gameRequest.You.Head, destCoords)
-	response := MoveResponse{
-		Move: move,
-	}
 
-	return response, gameState
+	return move, gameState
 }

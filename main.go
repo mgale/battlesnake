@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -56,6 +55,8 @@ type MoveResponse struct {
 	Shout string `json:"shout,omitempty"`
 }
 
+var gameStrategy map[string]Strategy
+
 // HandleIndex is called when your Battlesnake is created and refreshed
 // by play.battlesnake.com. BattlesnakeInfoResponse contains information about
 // your Battlesnake, including what it should look like on the game board.
@@ -86,20 +87,14 @@ func HandleStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Nothing to respond with here
-	fmt.Print("START\n")
-	gameState := GameState{
-		lastMove:      "",
-		currentTarget: Coord{X: 0, Y: 0},
-		targetLoop: []Coord{
-			{X: 0, Y: 0},
-			{
-				X: request.Board.Width - 1,
-				Y: request.Board.Height - 1,
-			},
-		},
+	log.Println("STARTING GAME")
+	var myStrategy Strategy
+	if len(request.Board.Snakes) == 1 {
+		// Solo game type
+		myStrategy = createStrategy("solo", request)
 	}
 
-	gameStates[request.Game.ID] = gameState
+	gameStrategy[request.Game.ID] = myStrategy
 }
 
 // HandleMove is called for each turn of each game.
@@ -112,12 +107,16 @@ func HandleMove(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 
-	gameState := gameStates[request.Game.ID]
-	gameState.gameRequest = request
-	response, gameState := determineMove(gameState)
-	gameStates[request.Game.ID] = gameState
+	myStrategy := gameStrategy[request.Game.ID]
 
-	fmt.Printf("MOVE: %s\n", response.Move)
+	response := MoveResponse{
+		Move:  myStrategy.GetMove(request),
+		Shout: "Here I come",
+	}
+
+	gameStrategy[request.Game.ID] = myStrategy
+
+	log.Println("MOVE:", response.Move)
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
@@ -135,7 +134,8 @@ func HandleEnd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Nothing to respond with here
-	fmt.Print("END\n")
+	log.Println("ENDING GAME")
+	delete(gameStrategy, request.Game.ID)
 }
 
 func main() {
@@ -144,14 +144,13 @@ func main() {
 		port = "8080"
 	}
 
-	gameStates = make(map[string]GameState)
-	difftest()
+	gameStrategy = make(map[string]Strategy)
 
 	http.HandleFunc("/", HandleIndex)
 	http.HandleFunc("/start", HandleStart)
 	http.HandleFunc("/move", HandleMove)
 	http.HandleFunc("/end", HandleEnd)
 
-	fmt.Printf("Starting Battlesnake Server at http://0.0.0.0:%s...\n", port)
+	log.Printf("Starting Battlesnake Server at http://0.0.0.0:%s...\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
